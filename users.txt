@@ -1,0 +1,16 @@
+# ============================================
+# ICS 440 - Supply Chain Transparency Tracking
+# User Database (Simple Text File)
+# Format: username|password|role
+# ============================================
+# 
+# Roles: admin, producer, supplier, consumer
+# 
+# IMPORTANT: In production, use proper password hashing!
+# This is for educational/demo purposes only.
+
+admin|admin123|admin
+producer1|prod123|producer
+supplier1|supp123|supplier
+consumer1|cons123|consumer
+

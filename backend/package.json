@@ -1,0 +1,38 @@
+{
+  "name": "supply-chain-backend",
+  "version": "1.0.0",
+  "description": "Blockchain-based supply chain tracking system backend with Express.js and Ethers.js",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "dist/app.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "dev": "ts-node src/app.ts",
+    "compile": "npx hardhat compile",
+    "test:contract": "npx hardhat test",
+    "deploy:local": "npx hardhat run scripts/deploy.ts --network localhost",
+    "deploy:sepolia": "npx hardhat run scripts/deploy.ts --network sepolia",
+    "node": "npx hardhat node"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "ethers": "^6.16.0",
+    "express": "^5.2.1",
+    "hardhat": "^2.27.1"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/chai": "^5.2.3",
+    "@types/chai-as-promised": "^8.0.2",
+    "@types/dotenv": "^6.1.1",
+    "@types/express": "^5.0.6",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^24.10.2",
+    "chai": "^4.5.0",
+    "chai-as-promised": "^8.0.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}

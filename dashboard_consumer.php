@@ -11,7 +11,7 @@ require_login();
 require_role(['consumer', 'admin']);
 
 $page_title = 'Consumer Dashboard';
-$current_user = get_current_user();
+$current_user = get_logged_in_user();
 ?>
 <?php include 'partials/header.php'; ?>
 

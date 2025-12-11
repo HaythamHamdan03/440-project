@@ -1,14 +1,3 @@
-# ============================================
-# ICS 440 - Supply Chain Transparency Tracking
-# Product Database (Simple Text File)
-# Format: productId|name|batchId|creatorUsername
-# ============================================
-# 
-# This is an off-chain log of products.
-# The actual product data is stored on the blockchain.
-# This file is for quick reference and display purposes.
-
-1001|Organic Coffee Beans|BATCH-2024-001|producer1
-1002|Premium Chocolate Bars|BATCH-2024-002|producer1
-1003|Fair Trade Tea Leaves|BATCH-2024-003|producer1
-
+1001|banana|BATCH-1001|producer1|2.49|20|saved|2025-12-10T23:54:06
+1002|ali|BATCH-1002|producer1|33|3|saved|2025-12-10T23:54:44
+1001|organic bean|BATCH-1001|ismael|2|12|saved|2025-12-10T23:58:25

@@ -14,3 +14,5 @@ producer1|prod123|producer
 supplier1|supp123|supplier
 consumer1|cons123|consumer
 
+haitham|2003|supplier
+ismael|ismael|producer

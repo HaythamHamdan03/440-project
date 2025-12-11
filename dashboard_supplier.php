@@ -11,7 +11,7 @@ require_login();
 require_role(['supplier', 'admin']);
 
 $page_title = 'Supplier Dashboard';
-$current_user = get_current_user();
+$current_user = get_logged_in_user();
 
 // Load products for display
 $products = load_products();

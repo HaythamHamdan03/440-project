@@ -124,6 +124,57 @@ function get_logged_in_user() {
     return $_SESSION['user'] ?? null;
 }
 
+/**
+ * Get wallet address from session
+ * 
+ * @return string|null Wallet address or null
+ */
+function get_wallet_address() {
+    return $_SESSION['wallet_address'] ?? null;
+}
+
+/**
+ * Store private key in session (encrypted)
+ * Note: In production, use proper encryption
+ * 
+ * @param string $privateKey Private key
+ * @return bool
+ */
+function store_private_key($privateKey) {
+    if (empty($privateKey) || !preg_match('/^0x[a-fA-F0-9]{64}$/', $privateKey)) {
+        return false;
+    }
+    
+    // In production, encrypt this
+    $_SESSION['private_key'] = $privateKey;
+    return true;
+}
+
+/**
+ * Get private key from session
+ * 
+ * @return string|null Private key or null
+ */
+function get_private_key() {
+    return $_SESSION['private_key'] ?? null;
+}
+
+/**
+ * Clear private key from session
+ */
+function clear_private_key() {
+    unset($_SESSION['private_key']);
+}
+
+/**
+ * Check if user has private key stored
+ * 
+ * @return bool
+ */
+function has_private_key() {
+    return !empty($_SESSION['private_key']);
+}
+
 /* ============================================================
  * PRODUCT HELPERS
  * ============================================================
@@ -168,6 +219,9 @@ function load_products() {
                     // draft / saved / approved (for now we use draft/saved)
                     'status'     => isset($parts[6]) ? trim($parts[6]) : 'draft',
                     'updated_at' => isset($parts[7]) ? trim($parts[7]) : '',
+                    // Extended fields for supplier tracking
+                    'owner'      => isset($parts[8]) ? trim($parts[8]) : '',
+                    'tx_hash'    => isset($parts[9]) ? trim($parts[9]) : '',
                 ];
                 $products[] = $product;
             }
@@ -272,6 +326,8 @@ function update_product($productId, $creator, array $newFields) {
             $p['quantity'],
             $p['status'],
             $p['updated_at'],
+            isset($p['owner']) ? $p['owner'] : '',
+            isset($p['tx_hash']) ? $p['tx_hash'] : '',
         ]);
     }
 
@@ -315,11 +371,175 @@ function delete_product($productId, $creator) {
             $p['quantity'],
             $p['status'],
             $p['updated_at'],
+            isset($p['owner']) ? $p['owner'] : '',
+            isset($p['tx_hash']) ? $p['tx_hash'] : '',
         ]);
     }
 
     $content = $lines ? implode("\n", $lines) . "\n" : '';
     return file_put_contents($file, $content, LOCK_EX) !== false;
+}
+
+/**
+ * Purchase a product (transfer ownership to supplier)
+ * 
+ * @param string $productId Product ID to purchase
+ * @param string $supplier Supplier username
+ * @param int    $quantity Quantity to purchase
+ * @return bool True on success, false on failure
+ */
+function purchase_product($productId, $supplier, $quantity) {
+    $products = load_products();
+    $updated = false;
+    $lastMatchIndex = -1;
+
+    // Find the last matching product (most recent one)
+    for ($i = count($products) - 1; $i >= 0; $i--) {
+        if ($products[$i]['productId'] === $productId) {
+            $lastMatchIndex = $i;
+            break;
+        }
+    }
+
+    if ($lastMatchIndex < 0) {
+        return false;
+    }
+
+    $product = &$products[$lastMatchIndex];
+    $available_qty = intval($product['quantity'] ?? 0);
+    
+    // Check if enough quantity is available and product is not already owned
+    if ($quantity > $available_qty || (!empty($product['owner']) && $product['owner'] !== $supplier)) {
+        return false;
+    }
+
+    // If purchasing full quantity
+    if ($quantity == $available_qty) {
+        // Update product: transfer ownership, set status
+        $product['owner'] = $supplier;
+        $product['quantity'] = strval($quantity);
+        $product['status'] = 'shipped';
+        $product['updated_at'] = date('Y-m-d\TH:i:s');
+        $product['tx_hash'] = '0x' . bin2hex(random_bytes(16)); // Mock transaction hash
+    } else {
+        // Partial purchase: create new entry for purchased quantity, reduce original
+        $remaining_qty = $available_qty - $quantity;
+        $product['quantity'] = strval($remaining_qty);
+        
+        // Create new product entry for purchased quantity
+        $purchased_product = $product;
+        $purchased_product['quantity'] = strval($quantity);
+        $purchased_product['owner'] = $supplier;
+        $purchased_product['status'] = 'shipped';
+        $purchased_product['updated_at'] = date('Y-m-d\TH:i:s');
+        $purchased_product['tx_hash'] = '0x' . bin2hex(random_bytes(16));
+        $products[] = $purchased_product;
+    }
+
+    $updated = true;
+
+    // Rewrite file with updated products
+    $file = 'products.txt';
+    $lines = [];
+    foreach ($products as $p) {
+        $lines[] = implode('|', [
+            $p['productId'],
+            $p['name'],
+            $p['batchId'],
+            $p['creator'],
+            $p['price'],
+            $p['quantity'],
+            $p['status'],
+            $p['updated_at'],
+            isset($p['owner']) ? $p['owner'] : '',
+            isset($p['tx_hash']) ? $p['tx_hash'] : '',
+        ]);
+    }
+
+    return file_put_contents($file, implode("\n", $lines) . "\n", LOCK_EX) !== false;
+}
+
+/**
+ * Purchase a product for consumer (transfer ownership from supplier to consumer)
+ * 
+ * @param string $productId Product ID to purchase
+ * @param string $consumer Consumer username
+ * @param int    $quantity Quantity to purchase
+ * @return bool True on success, false on failure
+ */
+function purchase_product_consumer($productId, $consumer, $quantity) {
+    $products = load_products();
+    $lastMatchIndex = -1;
+
+    // Find products owned by suppliers (available for consumer purchase)
+    for ($i = count($products) - 1; $i >= 0; $i--) {
+        if ($products[$i]['productId'] === $productId && 
+            !empty($products[$i]['owner']) && 
+            $products[$i]['status'] === 'shipped') {
+            $lastMatchIndex = $i;
+            break;
+        }
+    }
+
+    if ($lastMatchIndex < 0) {
+        return false;
+    }
+
+    $product = &$products[$lastMatchIndex];
+    $available_qty = intval($product['quantity'] ?? 0);
+    
+    // Check if enough quantity is available
+    if ($quantity > $available_qty) {
+        return false;
+    }
+
+    // If purchasing full quantity
+    if ($quantity == $available_qty) {
+        // Update product: transfer ownership to consumer, set status
+        $product['owner'] = $consumer;
+        $product['quantity'] = strval($quantity);
+        $product['status'] = 'purchased';
+        $product['updated_at'] = date('Y-m-d\TH:i:s');
+        // Keep existing tx_hash or create new one
+        if (empty($product['tx_hash'])) {
+            $product['tx_hash'] = '0x' . bin2hex(random_bytes(16));
+        }
+    } else {
+        // Partial purchase: create new entry for purchased quantity, reduce original
+        $remaining_qty = $available_qty - $quantity;
+        $product['quantity'] = strval($remaining_qty);
+        
+        // Create new product entry for purchased quantity
+        $purchased_product = $product;
+        $purchased_product['quantity'] = strval($quantity);
+        $purchased_product['owner'] = $consumer;
+        $purchased_product['status'] = 'purchased';
+        $purchased_product['updated_at'] = date('Y-m-d\TH:i:s');
+        if (empty($purchased_product['tx_hash'])) {
+            $purchased_product['tx_hash'] = '0x' . bin2hex(random_bytes(16));
+        }
+        $products[] = $purchased_product;
+    }
+
+    // Rewrite file with updated products
+    $file = 'products.txt';
+    $lines = [];
+    foreach ($products as $p) {
+        $lines[] = implode('|', [
+            $p['productId'],
+            $p['name'],
+            $p['batchId'],
+            $p['creator'],
+            $p['price'],
+            $p['quantity'],
+            $p['status'],
+            $p['updated_at'],
+            isset($p['owner']) ? $p['owner'] : '',
+            isset($p['tx_hash']) ? $p['tx_hash'] : '',
+        ]);
+    }
+
+    return file_put_contents($file, implode("\n", $lines) . "\n", LOCK_EX) !== false;
 }
 
 /**

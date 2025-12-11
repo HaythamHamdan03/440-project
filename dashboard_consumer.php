@@ -7,11 +7,123 @@
  */
 
 require_once 'config.php';
+require_once 'api_client.php';
 require_login();
 require_role(['consumer', 'admin']);
 
 $page_title = 'Consumer Dashboard';
 $current_user = get_logged_in_user();
+$username = $current_user['username'] ?? 'Guest';
+
+// Handle POST actions
+$status_message = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    
+    if ($action === 'purchase_product') {
+        $productId = trim($_POST['productId'] ?? '');
+        $quantity = intval($_POST['quantity'] ?? 0);
+        $tx_hash = trim($_POST['tx_hash'] ?? '');
+        
+        if ($productId !== '' && $quantity > 0) {
+            // Update local storage with transaction hash if provided
+            if (purchase_product_consumer($productId, $username, $quantity)) {
+                if ($tx_hash) {
+                    // Update with transaction hash
+                    $products = load_products();
+                    foreach ($products as &$p) {
+                        if ($p['productId'] === $productId && $p['owner'] === $username) {
+                            $p['tx_hash'] = $tx_hash;
+                            break;
+                        }
+                    }
+                    // Save updated products
+                    $file = 'products.txt';
+                    $lines = [];
+                    foreach ($products as $p) {
+                        $lines[] = implode('|', [
+                            $p['productId'],
+                            $p['name'],
+                            $p['batchId'],
+                            $p['creator'],
+                            $p['price'],
+                            $p['quantity'],
+                            $p['status'],
+                            $p['updated_at'],
+                            isset($p['owner']) ? $p['owner'] : '',
+                            isset($p['tx_hash']) ? $p['tx_hash'] : '',
+                        ]);
+                    }
+                    file_put_contents($file, implode("\n", $lines) . "\n", LOCK_EX);
+                }
+                $status_message = '<div class="message-success" style="display: block; margin: 15px 0;">Product Shipped.</div>';
+            } else {
+                $status_message = '<div class="message-error" style="display: block; margin: 15px 0;">Failed to purchase product. Please try again.</div>';
+            }
+        }
+    }
+}
+
+// Load products
+$all_products = load_products();
+
+// Filter available products (owned by suppliers, status = 'shipped', not owned by current consumer)
+$available_products = array_filter($all_products, function($p) use ($username) {
+    $is_shipped = isset($p['status']) && $p['status'] === 'shipped';
+    $has_owner = !empty($p['owner']);
+    $not_owned_by_me = empty($p['owner']) || $p['owner'] !== $username;
+    return $is_shipped && $has_owner && $not_owned_by_me;
+});
+
+// Filter consumer's purchased products
+$my_products = array_filter($all_products, function($p) use ($username) {
+    return isset($p['owner']) && $p['owner'] === $username && isset($p['status']) && $p['status'] === 'purchased';
+});
+
+// Search functionality for "Available Products"
+$search_available = $_GET['search_available'] ?? '';
+if ($search_available !== '') {
+    $search_lower = strtolower($search_available);
+    $available_products = array_filter($available_products, function($p) use ($search_lower) {
+        return strpos(strtolower($p['name']), $search_lower) !== false ||
+               strpos(strtolower($p['creator']), $search_lower) !== false ||
+               strpos(strtolower($p['productId']), $search_lower) !== false;
+    });
+}
+
+// Search functionality for "Your Products"
+$search_query = $_GET['search'] ?? '';
+if ($search_query !== '') {
+    $search_lower = strtolower($search_query);
+    $my_products = array_filter($my_products, function($p) use ($search_lower) {
+        return strpos(strtolower($p['productId']), $search_lower) !== false ||
+               strpos(strtolower($p['tx_hash']), $search_lower) !== false ||
+               strpos(strtolower($p['name']), $search_lower) !== false;
+    });
+}
+
+// Generate transaction links (for display - can be multiple transactions per product)
+function get_transaction_links($product) {
+    $tx_hash = isset($product['tx_hash']) ? trim($product['tx_hash']) : '';
+    if (empty($tx_hash) || $tx_hash === 'Pending') {
+        return ['<a href="#" style="color: #667eea; text-decoration: underline; cursor: pointer;">Transaction 1</a>'];
+    }
+    
+    // For now, show the transaction hash as clickable links
+    // In a real system, you might have multiple transactions stored separately
+    $links = [];
+    $link_style = 'color: #667eea; text-decoration: underline; cursor: pointer; display: block; margin-bottom: 4px;';
+    $links[] = '<a href="#" onclick="viewTransaction(\'' . htmlspecialchars($tx_hash) . '\'); return false;" style="' . $link_style . '">Transaction 1</a>';
+    
+    // Generate additional transaction links if needed (for demo purposes)
+    // In real implementation, these would come from a transaction history
+    if (strlen($tx_hash) > 10) {
+        $links[] = '<a href="#" onclick="viewTransaction(\'' . htmlspecialchars($tx_hash) . '\'); return false;" style="' . $link_style . '">Transaction 2</a>';
+        $links[] = '<a href="#" onclick="viewTransaction(\'' . htmlspecialchars($tx_hash) . '\'); return false;" style="color: #667eea; text-decoration: underline; cursor: pointer; display: block;">Transaction 3</a>';
+    }
+    
+    return $links;
+}
 ?>
 <?php include 'partials/header.php'; ?>
 
@@ -26,103 +138,273 @@ $current_user = get_logged_in_user();
 
     <!-- Main Content -->
     <main class="main-content">
-        <h1 class="page-title">Consumer Dashboard</h1>
-        <p class="page-subtitle">Verify product authenticity and view complete history</p>
-
-        <!-- Verify Product Authenticity -->
-        <div class="card">
-            <h2 class="card-title">Verify Product Authenticity</h2>
-            <form id="verifyForm" onsubmit="event.preventDefault(); verifyProduct();">
-                <div class="form-group">
-                    <label for="verifyProductId">Product ID</label>
-                    <input type="number" id="verifyProductId" name="verifyProductId" required placeholder="e.g., 1001">
-                </div>
-                <button type="submit" class="btn btn-primary">Check on Blockchain</button>
-            </form>
-            
-            <div id="verify-result" style="margin-top: 20px;"></div>
-            <div id="status-message" class="message" style="display: none;"></div>
-        </div>
-
-        <!-- Product History -->
-        <div class="card">
-            <h2 class="card-title">Product History</h2>
-            <form id="historyForm" onsubmit="event.preventDefault(); loadHistoryForProduct(document.getElementById('historyProductId').value, 'historyTableBody');">
-                <div class="form-group">
-                    <label for="historyProductId">Product ID</label>
-                    <input type="number" id="historyProductId" name="historyProductId" required placeholder="e.g., 1001">
-                </div>
-                <button type="submit" class="btn btn-primary">Get Product History</button>
-            </form>
-            
-            <div class="table-container" style="margin-top: 20px;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Owner Address</th>
-                            <th>Status</th>
-                            <th>Date/Time</th>
-                        </tr>
-                    </thead>
-                    <tbody id="historyTableBody">
-                        <tr>
-                            <td colspan="4" class="text-center text-muted">Enter a Product ID and click "Get Product History" to view traceability information</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- QR Code Placeholder (Future Work) -->
-        <div class="card">
-            <h2 class="card-title">Future Work: QR Code Scan</h2>
-            <p class="text-muted">QR scanner can be integrated here for easy product verification (not required now).</p>
-            <button class="btn btn-disabled" disabled>QR Scanner (Coming Soon)</button>
-            <p style="margin-top: 15px; font-size: 0.9em; color: var(--text-secondary);">
-                <strong>Note:</strong> This is a placeholder for optional bonus feature. QR code scanning would allow 
-                consumers to quickly scan a product's QR code to automatically retrieve its blockchain history.
+        <!-- Welcome Section -->
+        <div style="margin-bottom: 25px;">
+            <h1 class="page-title" style="margin-bottom: 10px;">consumer</h1>
+            <p class="page-subtitle" style="margin-bottom: 15px;">
+                Welcome, <?php echo htmlspecialchars($username); ?>. View your purchased products and verify authenticity. On-chain actions record in Sepolia.
             </p>
+            <?php echo $status_message; ?>
+        </div>
+
+        <!-- Available Products Section -->
+        <div class="card" style="margin-bottom: 25px;">
+            <h2 class="card-title">Available Products</h2>
+            
+            <!-- Search Bar for Available Products -->
+            <form method="get" style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 15px;">
+                <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                    <input 
+                        type="text" 
+                        name="search_available" 
+                        placeholder="Search by product or producer..." 
+                        value="<?php echo htmlspecialchars($search_available); ?>"
+                        style="width: 100%; padding: 12px; background: var(--bg-primary); border: 2px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 1em;"
+                    />
+                </div>
+                <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; padding: 12px 24px;">
+                    Search
+                </button>
+            </form>
+            <p class="text-muted" style="margin-bottom: 15px; font-size: 0.9em;">
+                Search available products from suppliers and purchase your preferred quantity.
+            </p>
+            
+            <?php if (empty($available_products)): ?>
+                <p class="text-muted">No products available for purchase.</p>
+            <?php else: ?>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Product</th>
+                                <th>Producer</th>
+                                <th>Price</th>
+                                <th>Available</th>
+                                <th>Purchase</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($available_products as $product): 
+                                $available_qty = isset($product['quantity']) ? intval($product['quantity']) : 0;
+                                $price = isset($product['price']) ? number_format(floatval($product['price']), 2) : '0.00';
+                            ?>
+                                <tr>
+                                    <td>#<?php echo htmlspecialchars($product['productId']); ?></td>
+                                    <td><?php echo htmlspecialchars($product['name']); ?></td>
+                                    <td><?php echo htmlspecialchars($product['creator']); ?></td>
+                                    <td><?php echo $price; ?></td>
+                                    <td><?php echo $available_qty; ?></td>
+                                    <td>
+                                        <div style="display: flex; gap: 8px; align-items: center;">
+                                            <input 
+                                                type="number" 
+                                                id="qty_<?php echo htmlspecialchars($product['productId']); ?>"
+                                                value="<?php echo $available_qty; ?>" 
+                                                min="1" 
+                                                max="<?php echo $available_qty; ?>"
+                                                style="width: 80px; padding: 6px; background: var(--bg-primary); border: 2px solid var(--border-color); border-radius: 4px; color: var(--text-primary);"
+                                            />
+                                            <button 
+                                                type="button"
+                                                onclick="purchaseProductAsConsumer('<?php echo htmlspecialchars($product['productId']); ?>', '<?php echo htmlspecialchars($product['name']); ?>', '<?php echo $price; ?>', '<?php echo htmlspecialchars($product['tx_hash']); ?>')"
+                                                class="btn btn-primary"
+                                                style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; padding: 6px 16px; font-size: 0.9em;"
+                                            >
+                                                Approve
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Your Products Section -->
+        <div class="card" style="margin-bottom: 25px;">
+            <h2 class="card-title">Your Products</h2>
+            
+            <!-- Search Bar -->
+            <form method="get" style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 15px;">
+                <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                    <input 
+                        type="text" 
+                        name="search" 
+                        placeholder="Search by productID or Transaction..." 
+                        value="<?php echo htmlspecialchars($search_query); ?>"
+                        style="width: 100%; padding: 12px; background: var(--bg-primary); border: 2px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 1em;"
+                    />
+                </div>
+                <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; padding: 12px 24px;">
+                    Search
+                </button>
+            </form>
+            <p class="text-muted" style="margin-bottom: 15px; font-size: 0.9em;">
+                Search your purchased products by product ID or transaction hash.
+            </p>
+            
+            <?php if (!empty($status_message)): ?>
+                <?php echo $status_message; ?>
+            <?php endif; ?>
+            
+            <!-- Your Products Table -->
+            <?php if (empty($my_products)): ?>
+                <p class="text-muted">You have not purchased any products yet.</p>
+            <?php else: ?>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Product</th>
+                                <th>Price</th>
+                                <th>Qty</th>
+                                <th>Status</th>
+                                <th>Updated</th>
+                                <th>Transaction</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($my_products as $product): 
+                                $price = isset($product['price']) ? number_format(floatval($product['price']), 2) : '0.00';
+                                $qty = isset($product['quantity']) ? intval($product['quantity']) : 0;
+                                $status = isset($product['status']) ? $product['status'] : 'pending';
+                                $updated = isset($product['updated_at']) ? $product['updated_at'] : 'N/A';
+                                $transaction_links = get_transaction_links($product);
+                            ?>
+                                <tr>
+                                    <td>#<?php echo htmlspecialchars($product['productId']); ?></td>
+                                    <td><?php echo htmlspecialchars($product['name']); ?></td>
+                                    <td><?php echo $price; ?></td>
+                                    <td><?php echo $qty; ?></td>
+                                    <td>
+                                        <span class="badge badge-success">purchased</span>
+                                    </td>
+                                    <td style="font-size: 0.85em; color: var(--text-secondary);">
+                                        <?php echo htmlspecialchars($updated); ?>
+                                    </td>
+                                    <td style="font-size: 0.85em;">
+                                        <div style="display: flex; flex-direction: column;">
+                                            <?php foreach ($transaction_links as $link): ?>
+                                                <?php echo $link; ?>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
         </div>
     </main>
 </div>
 
 <script>
-/**
- * Verify product authenticity
- */
-async function verifyProduct() {
-    const productId = document.getElementById('verifyProductId').value;
-    const resultDiv = document.getElementById('verify-result');
-    
-    if (!productId || isNaN(productId)) {
-        showMessage('error', 'Please enter a valid Product ID');
-        return;
-    }
-    
-    // First, try to get history (if product exists, it has history)
-    try {
-        showMessage('info', 'Checking product on blockchain...');
-        
-        // Load history to verify product exists
-        await loadHistoryForProduct(productId, 'historyTableBody');
-        
-        // Check if verifyProduct function is available
-        const verifyResult = await verifyProductOnChain(productId);
-        
-        if (verifyResult === true) {
-            resultDiv.innerHTML = '<div class="message message-success">✓ Product verified and authentic on blockchain!</div>';
-        } else if (verifyResult === false) {
-            resultDiv.innerHTML = '<div class="message message-warning">⚠ Product found but verification failed</div>';
-        } else {
-            // verifyProduct function not available, but history exists
-            resultDiv.innerHTML = '<div class="message message-success">✓ Product found on blockchain (history available above)</div>';
+    /**
+     * Purchase product as consumer using MetaMask
+     */
+    async function purchaseProductAsConsumer(productId, productName, price, blockchainProductId) {
+        // Check if wallet is connected
+        if (!isWalletConnected()) {
+            alert('Please connect your MetaMask wallet first!');
+            return;
         }
-    } catch (error) {
-        resultDiv.innerHTML = '<div class="message message-error">✗ Product not found or error occurred</div>';
+        
+        // Initialize blockchain if not already done
+        if (!contract) {
+            const initialized = await initBlockchain();
+            if (!initialized || !contract) {
+                alert('Failed to initialize blockchain connection. Please make sure MetaMask is connected and CONTRACT_ADDRESS is set in js/blockchain.js');
+                button.disabled = false;
+                button.textContent = originalText;
+                return;
+            }
+        }
+        
+        // Get quantity
+        const quantityInput = document.getElementById('qty_' + productId);
+        const quantity = quantityInput ? parseInt(quantityInput.value) : 1;
+        
+        // Show loading
+        const button = event.target;
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Processing...';
+        
+        try {
+            // Convert productId to bytes32 if we have blockchain productId
+            let productIdBytes32 = blockchainProductId;
+            if (!productIdBytes32 || productIdBytes32 === '') {
+                // Generate bytes32 from productId
+                productIdBytes32 = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(productId.toString()));
+            } else if (!productIdBytes32.startsWith('0x') || productIdBytes32.length !== 66) {
+                // If it's not a valid bytes32, convert it
+                productIdBytes32 = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(productId.toString()));
+            }
+            
+            // Purchase via blockchain
+            const result = await purchaseProductOnBlockchain(productIdBytes32, price);
+            
+            if (result && result.success) {
+                // Save to PHP
+                await savePurchaseToPHP(productId, quantity, result.transactionHash);
+                
+                alert('Product purchased on blockchain!\n\nTransaction: ' + result.transactionHash + '\n\nView on Etherscan: https://sepolia.etherscan.io/tx/' + result.transactionHash);
+                
+                // Reload page
+                window.location.reload();
+            } else {
+                alert('Error: Failed to purchase product');
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        } catch (error) {
+            console.error('Error purchasing product:', error);
+            let errorMsg = 'Error: ';
+            if (error.code === 4001) {
+                errorMsg += 'Transaction rejected by user';
+            } else if (error.message) {
+                errorMsg += error.message;
+            } else {
+                errorMsg += 'Failed to purchase product';
+            }
+            alert(errorMsg);
+            button.disabled = false;
+            button.textContent = originalText;
+        }
     }
-}
+    
+    /**
+     * Save purchase to PHP
+     */
+    async function savePurchaseToPHP(productId, quantity, txHash) {
+        try {
+            const formData = new FormData();
+            formData.append('action', 'purchase_product');
+            formData.append('productId', productId);
+            formData.append('quantity', quantity);
+            formData.append('tx_hash', txHash);
+            
+            await fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            });
+        } catch (error) {
+            console.error('Error saving purchase:', error);
+        }
+    }
+    
+    /**
+     * View transaction details
+     */
+    function viewTransaction(txHash) {
+        window.open('https://sepolia.etherscan.io/tx/' + txHash, '_blank');
+    }
 </script>
 
 <?php include 'partials/footer.php'; ?>
-

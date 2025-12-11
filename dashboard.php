@@ -7,6 +7,7 @@
  */
 
 require_once 'config.php';
+require_once 'api_client.php';
 require_login();
 
 $page_title = 'Dashboard';

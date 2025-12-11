@@ -1,3 +1,4 @@
-1001|banana|BATCH-1001|producer1|2.49|20|saved|2025-12-10T23:54:06
-1002|ali|BATCH-1002|producer1|33|3|saved|2025-12-10T23:54:44
-1001|organic bean|BATCH-1001|ismael|2|12|saved|2025-12-10T23:58:25
+1001|banana|BATCH-1001|producer1|2.49|20|saved|2025-12-10T23:54:06||
+1002|ali|BATCH-1002|producer1|33|3|shipped|2025-12-11T00:08:52|supplier1|0xf7da3ca71e685800fd95b4ba1d32c520
+1003|banan|BATCH-1003|ismael|2.5|12|saved|2025-12-11T00:40:11||
+1005|bread|BATCH-1005|ismael|0|1|saved|2025-12-11T03:07:25||

@@ -7,6 +7,7 @@
  */
 
 require_once 'config.php';
+require_once 'api_client.php';
 require_login();
 require_role(['producer', 'admin']);
 
@@ -23,19 +24,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $productName = trim($_POST['productName'] ?? '');
         $price       = trim($_POST['price'] ?? '');
         $quantity    = trim($_POST['quantity'] ?? '');
+        $description = trim($_POST['description'] ?? $productName);
 
         if ($productId !== '' && $productName !== '') {
-            // Auto batch id for now
-            $batchId = 'BATCH-' . $productId;
-            add_product(
-                $productId,
-                $productName,
-                $batchId,
-                $current_user['username'],
-                $price,
-                $quantity,
-                'draft'
-            );
+            // Try to register on blockchain if private key is available
+            $privateKey = get_private_key();
+            if ($privateKey && api_check_health()) {
+                // Register on blockchain via backend API
+                $result = api_register_product(
+                    $privateKey,
+                    $productName,
+                    $description,
+                    $price ?: '0',
+                    'Initial Location'
+                );
+                
+                if ($result['success']) {
+                    // Product registered on blockchain, also save locally
+                    $batchId = 'BATCH-' . $productId;
+                    add_product(
+                        $productId,
+                        $productName,
+                        $batchId,
+                        $current_user['username'],
+                        $price,
+                        $quantity,
+                        'approved',
+                        date('Y-m-d\TH:i:s'),
+                        '',
+                        $result['data']['transactionHash'] ?? ''
+                    );
+                } else {
+                    // Blockchain registration failed, save as draft
+                    $batchId = 'BATCH-' . $productId;
+                    add_product(
+                        $productId,
+                        $productName,
+                        $batchId,
+                        $current_user['username'],
+                        $price,
+                        $quantity,
+                        'draft'
+                    );
+                }
+            } else {
+                // No private key or backend unavailable, save locally only
+                $batchId = 'BATCH-' . $productId;
+                add_product(
+                    $productId,
+                    $productName,
+                    $batchId,
+                    $current_user['username'],
+                    $price,
+                    $quantity,
+                    'draft'
+                );
+            }
         }
 
     } elseif ($action === 'row_action') {
@@ -91,6 +135,15 @@ $last_product      = !empty($my_products) ? end($my_products) : null;
     <main class="main-content">
         <h1 class="page-title">Producer Dashboard</h1>
         <p class="page-subtitle">Register and manage your products before sending them to the blockchain</p>
+        
+        <?php 
+        $walletAddress = get_wallet_address();
+        if (!$walletAddress): 
+        ?>
+            <div class="message message-warning" style="margin-bottom: 20px;">
+                ⚠️ Please connect your MetaMask wallet using the "Connect Wallet" button above to approve products on the blockchain.
+            </div>
+        <?php endif; ?>
 
         <!-- Summary Cards -->
         <div class="card-grid">
@@ -252,7 +305,7 @@ $last_product      = !empty($my_products) ? end($my_products) : null;
                                                         type="button"
                                                         class="btn btn-primary"
                                                         style="padding: 4px 12px;"
-                                                        onclick="approveProductPlaceholder('<?php echo htmlspecialchars($product['productId']); ?>');"
+                                                        onclick="approveProduct('<?php echo htmlspecialchars($product['productId']); ?>', '<?php echo htmlspecialchars($product['name']); ?>', '<?php echo htmlspecialchars($product['price']); ?>');"
                                                     >
                                                         Approve
                                                     </button>
@@ -293,11 +346,92 @@ $last_product      = !empty($my_products) ? end($my_products) : null;
     </main>
 </div>
 
-<?php include 'partials/footer.php'; ?>
-
 <script>
-    // Placeholder function for later integration with MetaMask / contract.js
-    function approveProductPlaceholder(productId) {
-        alert("Approve product " + productId + " – later this will call MetaMask and the smart contract.");
+    /**
+     * Approve product on blockchain using MetaMask
+     */
+    async function approveProduct(productId, productName, price) {
+        // Check if wallet is connected
+        if (!isWalletConnected()) {
+            alert('Please connect your MetaMask wallet first!');
+            return;
+        }
+        
+        // Initialize blockchain if not already done
+        if (!contract) {
+            const initialized = await initBlockchain();
+            if (!initialized || !contract) {
+                alert('Failed to initialize blockchain connection. Please make sure MetaMask is connected and CONTRACT_ADDRESS is set in js/blockchain.js');
+                button.disabled = false;
+                button.textContent = originalText;
+                return;
+            }
+        }
+        
+        // Show loading
+        const button = event.target;
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Processing...';
+        
+        try {
+            // Call blockchain function directly via MetaMask
+            const result = await approveProductOnBlockchain(
+                productId,
+                productName,
+                productName, // description
+                price || '0'
+            );
+            
+            if (result && result.success) {
+                // Save transaction hash to PHP
+                await saveTransactionHash(productId, result.transactionHash, result.productId);
+                
+                alert('Product approved on blockchain!\n\nTransaction: ' + result.transactionHash + '\n\nView on Etherscan: https://sepolia.etherscan.io/tx/' + result.transactionHash);
+                
+                // Reload page to show updated status
+                window.location.reload();
+            } else {
+                alert('Error: Failed to approve product');
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        } catch (error) {
+            console.error('Error approving product:', error);
+            let errorMsg = 'Error: ';
+            if (error.code === 4001) {
+                errorMsg += 'Transaction rejected by user';
+            } else if (error.message) {
+                errorMsg += error.message;
+            } else {
+                errorMsg += 'Failed to approve product';
+            }
+            alert(errorMsg);
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    }
+    
+    /**
+     * Save transaction hash to PHP backend
+     */
+    async function saveTransactionHash(productId, txHash, blockchainProductId) {
+        try {
+            await fetch('save_transaction.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    productId: productId,
+                    transactionHash: txHash,
+                    blockchainProductId: blockchainProductId
+                })
+            });
+        } catch (error) {
+            console.error('Error saving transaction:', error);
+        }
     }
 </script>
+
+<?php include 'partials/footer.php'; ?>

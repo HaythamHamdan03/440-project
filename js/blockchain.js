@@ -13,9 +13,35 @@
 let CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
 const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
+const LOCAL_CHAIN_ID = '0x7a69'; // 31337 in hex
 
 // Contract ABI - from backend/src/config/abi.ts
 const CONTRACT_ABI = [
+    // User Management
+    {
+        "inputs": [
+            { "internalType": "uint8", "name": "_role", "type": "uint8" },
+            { "internalType": "string", "name": "_name", "type": "string" }
+        ],
+        "name": "registerUser",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            { "internalType": "address", "name": "_userAddress", "type": "address" }
+        ],
+        "name": "getUser",
+        "outputs": [
+            { "internalType": "uint8", "name": "", "type": "uint8" },
+            { "internalType": "string", "name": "", "type": "string" },
+            { "internalType": "bool", "name": "", "type": "bool" }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    // Product Management
     {
         "inputs": [
             { "internalType": "string", "name": "_name", "type": "string" },
@@ -51,6 +77,17 @@ const CONTRACT_ABI = [
         "stateMutability": "payable",
         "type": "function"
     },
+    {
+        "inputs": [
+            { "internalType": "bytes32", "name": "_productId", "type": "bytes32" },
+            { "internalType": "string", "name": "_location", "type": "string" }
+        ],
+        "name": "confirmDelivery",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    // Query Functions
     {
         "inputs": [
             { "internalType": "bytes32", "name": "_productId", "type": "bytes32" }
@@ -91,6 +128,32 @@ const CONTRACT_ABI = [
         ],
         "stateMutability": "view",
         "type": "function"
+    },
+    // Events
+    {
+        "anonymous": false,
+        "inputs": [
+            { "indexed": true, "internalType": "bytes32", "name": "productId", "type": "bytes32" },
+            { "indexed": false, "internalType": "string", "name": "name", "type": "string" },
+            { "indexed": true, "internalType": "address", "name": "producer", "type": "address" },
+            { "indexed": false, "internalType": "uint256", "name": "price", "type": "uint256" },
+            { "indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256" }
+        ],
+        "name": "ProductRegistered",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            { "indexed": true, "internalType": "bytes32", "name": "productId", "type": "bytes32" },
+            { "indexed": true, "internalType": "address", "name": "from", "type": "address" },
+            { "indexed": true, "internalType": "address", "name": "to", "type": "address" },
+            { "indexed": false, "internalType": "uint8", "name": "status", "type": "uint8" },
+            { "indexed": false, "internalType": "string", "name": "location", "type": "string" },
+            { "indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256" }
+        ],
+        "name": "ProductTransferred",
+        "type": "event"
     }
 ];
 
@@ -103,9 +166,24 @@ let contract = null;
  * Initialize blockchain connection
  */
 async function initBlockchain() {
-    if (typeof window.ethereum === 'undefined' || typeof ethers === 'undefined') {
-        console.warn('MetaMask or ethers.js not available');
+    // Check MetaMask
+    if (typeof window.ethereum === 'undefined') {
+        console.warn('MetaMask not installed');
         return false;
+    }
+    
+    // Check ethers.js - may need to wait for CDN to load
+    if (typeof ethers === 'undefined') {
+        console.log('Waiting for ethers.js to load...');
+        // Wait up to 3 seconds for ethers to load
+        for (let i = 0; i < 30; i++) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (typeof ethers !== 'undefined') break;
+        }
+        if (typeof ethers === 'undefined') {
+            console.warn('ethers.js not loaded from CDN');
+            return false;
+        }
     }
     
     try {

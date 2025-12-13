@@ -7,7 +7,6 @@
  */
 
 require_once 'config.php';
-require_once 'api_client.php';
 require_login();
 require_role(['producer', 'admin']);
 
@@ -27,59 +26,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $description = trim($_POST['description'] ?? $productName);
 
         if ($productId !== '' && $productName !== '') {
-            // Try to register on blockchain if private key is available
-            $privateKey = get_private_key();
-            if ($privateKey && api_check_health()) {
-                // Register on blockchain via backend API
-                $result = api_register_product(
-                    $privateKey,
-                    $productName,
-                    $description,
-                    $price ?: '0',
-                    'Initial Location'
-                );
-                
-                if ($result['success']) {
-                    // Product registered on blockchain, also save locally
-                    $batchId = 'BATCH-' . $productId;
-                    add_product(
-                        $productId,
-                        $productName,
-                        $batchId,
-                        $current_user['username'],
-                        $price,
-                        $quantity,
-                        'approved',
-                        date('Y-m-d\TH:i:s'),
-                        '',
-                        $result['data']['transactionHash'] ?? ''
-                    );
-                } else {
-                    // Blockchain registration failed, save as draft
-                    $batchId = 'BATCH-' . $productId;
-                    add_product(
-                        $productId,
-                        $productName,
-                        $batchId,
-                        $current_user['username'],
-                        $price,
-                        $quantity,
-                        'draft'
-                    );
-                }
-            } else {
-                // No private key or backend unavailable, save locally only
-                $batchId = 'BATCH-' . $productId;
-                add_product(
-                    $productId,
-                    $productName,
-                    $batchId,
-                    $current_user['username'],
-                    $price,
-                    $quantity,
-                    'draft'
-                );
-            }
+            // Save product locally as draft (will be approved via MetaMask)
+            $batchId = 'BATCH-' . $productId;
+            add_product(
+                $productId,
+                $productName,
+                $batchId,
+                $current_user['username'],
+                $price,
+                $quantity,
+                'draft',
+                $description
+            );
         }
 
     } elseif ($action === 'row_action') {
@@ -96,13 +54,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'price'      => $price,
                     'quantity'   => $quantity,
                     'status'     => 'saved',
-                    'updated_at' => date('Y-m-d\TH:i:s'),
                 ]);
             } elseif ($rowAction === 'edit') {
                 // Make row editable again
                 update_product($productId, $current_user['username'], [
                     'status'     => 'draft',
-                    'updated_at' => date('Y-m-d\TH:i:s'),
                 ]);
             } elseif ($rowAction === 'delete') {
                 delete_product($productId, $current_user['username']);
@@ -219,6 +175,7 @@ $last_product      = !empty($my_products) ? end($my_products) : null;
                             foreach ($rows as $product):
                                 $status = $product['status'] ?? 'draft';
                                 $isDraft = ($status === 'draft');
+                                $isApproved = ($status === 'approved');
                             ?>
                                 <tr>
                                     <!-- Real product ID -->
@@ -272,7 +229,7 @@ $last_product      = !empty($my_products) ? end($my_products) : null;
                                     <!-- Updated -->
                                     <td>
                                             <span class="text-muted" style="font-size: 0.85em;">
-                                                <?php echo $product['updated_at'] ? htmlspecialchars($product['updated_at']) : 'N/A'; ?>
+                                                <?php echo isset($product['updatedAt']) ? htmlspecialchars($product['updatedAt']) : 'N/A'; ?>
                                             </span>
                                     </td>
 
@@ -299,8 +256,18 @@ $last_product      = !empty($my_products) ? end($my_products) : null;
                                                     >
                                                         Delete
                                                     </button>
+                                                <?php elseif ($isApproved): ?>
+                                                    <!-- Already approved: Show checkmark and tx link -->
+                                                    <span style="color: var(--success); font-weight: bold;">✓ Approved</span>
+                                                    <?php if (!empty($product['txHash'])): ?>
+                                                        <a href="https://sepolia.etherscan.io/tx/<?php echo htmlspecialchars($product['txHash']); ?>" 
+                                                           target="_blank" 
+                                                           style="font-size: 0.8em; color: var(--primary);">
+                                                            View on Etherscan
+                                                        </a>
+                                                    <?php endif; ?>
                                                 <?php else: ?>
-                                                    <!-- After Save: Approve + Edit + Delete -->
+                                                    <!-- After Save (not yet approved): Approve + Edit + Delete -->
                                                     <button
                                                         type="button"
                                                         class="btn btn-primary"
@@ -384,10 +351,12 @@ $last_product      = !empty($my_products) ? end($my_products) : null;
             );
             
             if (result && result.success) {
-                // Save transaction hash to PHP
-                await saveTransactionHash(productId, result.transactionHash, result.productId);
+                // Save transaction hash to PHP - wait for it to complete
+                const saved = await saveTransactionHash(productId, result.transactionHash, result.productId);
                 
-                alert('Product approved on blockchain!\n\nTransaction: ' + result.transactionHash + '\n\nView on Etherscan: https://sepolia.etherscan.io/tx/' + result.transactionHash);
+                if (saved) {
+                    alert('Product approved on blockchain!\n\nTransaction: ' + result.transactionHash + '\n\nView on Etherscan: https://sepolia.etherscan.io/tx/' + result.transactionHash);
+                }
                 
                 // Reload page to show updated status
                 window.location.reload();
@@ -417,7 +386,7 @@ $last_product      = !empty($my_products) ? end($my_products) : null;
      */
     async function saveTransactionHash(productId, txHash, blockchainProductId) {
         try {
-            await fetch('save_transaction.php', {
+            const response = await fetch('save_transaction.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -428,8 +397,20 @@ $last_product      = !empty($my_products) ? end($my_products) : null;
                     blockchainProductId: blockchainProductId
                 })
             });
+            
+            const result = await response.json();
+            console.log('Save transaction result:', result);
+            
+            if (!result.success) {
+                console.error('Failed to save transaction:', result.error);
+                alert('Warning: Transaction succeeded on blockchain but failed to save to database: ' + (result.error || 'Unknown error'));
+            }
+            
+            return result.success;
         } catch (error) {
             console.error('Error saving transaction:', error);
+            alert('Warning: Transaction succeeded on blockchain but failed to save to database: ' + error.message);
+            return false;
         }
     }
 </script>

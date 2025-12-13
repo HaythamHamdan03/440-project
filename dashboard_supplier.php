@@ -7,7 +7,6 @@
  */
 
 require_once 'config.php';
-require_once 'api_client.php';
 require_login();
 require_role(['supplier', 'admin']);
 
@@ -23,39 +22,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'purchase_product') {
         $productId = trim($_POST['productId'] ?? '');
         $quantity = intval($_POST['quantity'] ?? 0);
-        $tx_hash = trim($_POST['tx_hash'] ?? '');
+        $txHash = trim($_POST['tx_hash'] ?? '');
         
         if ($productId !== '' && $quantity > 0) {
-            // Update local storage with transaction hash if provided
-            if (purchase_product($productId, $username, $quantity)) {
-                if ($tx_hash) {
-                    // Update with transaction hash
-                    $products = load_products();
-                    foreach ($products as &$p) {
-                        if ($p['productId'] === $productId && $p['owner'] === $username) {
-                            $p['tx_hash'] = $tx_hash;
-                            break;
-                        }
-                    }
-                    // Save updated products
-                    $file = 'products.txt';
-                    $lines = [];
-                    foreach ($products as $p) {
-                        $lines[] = implode('|', [
-                            $p['productId'],
-                            $p['name'],
-                            $p['batchId'],
-                            $p['creator'],
-                            $p['price'],
-                            $p['quantity'],
-                            $p['status'],
-                            $p['updated_at'],
-                            isset($p['owner']) ? $p['owner'] : '',
-                            isset($p['tx_hash']) ? $p['tx_hash'] : '',
-                        ]);
-                    }
-                    file_put_contents($file, implode("\n", $lines) . "\n", LOCK_EX);
-                }
+            // Update local storage with transaction hash
+            if (purchase_product($productId, $username, $quantity, $txHash)) {
                 $status_message = '<div class="message-success" style="display: block; margin: 15px 0;">Product Shipped.</div>';
             } else {
                 $status_message = '<div class="message-error" style="display: block; margin: 15px 0;">Failed to purchase product. Please try again.</div>';
@@ -174,7 +145,7 @@ if ($search_query !== '') {
                                             />
                                             <button 
                                                 type="button"
-                                                onclick="purchaseProductAsSupplier('<?php echo htmlspecialchars($product['productId']); ?>', '<?php echo htmlspecialchars($product['name']); ?>', '<?php echo $price; ?>', '<?php echo htmlspecialchars($product['tx_hash']); ?>')"
+                                                onclick="purchaseProductAsSupplier('<?php echo htmlspecialchars($product['productId']); ?>', '<?php echo htmlspecialchars($product['name']); ?>', '<?php echo $price; ?>', '<?php echo htmlspecialchars($product['blockchainProductId'] ?? $product['txHash'] ?? ''); ?>')"
                                                 class="btn btn-primary"
                                                 style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; padding: 6px 16px; font-size: 0.9em;"
                                             >
@@ -214,8 +185,8 @@ if ($search_query !== '') {
                                 $price = isset($product['price']) ? number_format(floatval($product['price']), 2) : '0.00';
                                 $qty = isset($product['quantity']) ? intval($product['quantity']) : 0;
                                 $status = isset($product['status']) ? $product['status'] : 'pending';
-                                $updated = isset($product['updated_at']) ? $product['updated_at'] : 'N/A';
-                                $tx_hash = isset($product['tx_hash']) ? $product['tx_hash'] : 'Pending';
+                                $updated = isset($product['updatedAt']) ? $product['updatedAt'] : 'N/A';
+                                $txHash = isset($product['txHash']) ? $product['txHash'] : 'Pending';
                             ?>
                                 <tr>
                                     <td>#<?php echo htmlspecialchars($product['productId']); ?></td>
@@ -229,7 +200,7 @@ if ($search_query !== '') {
                                         <?php echo htmlspecialchars($updated); ?>
                                     </td>
                                     <td style="font-size: 0.85em; font-family: monospace; color: var(--text-secondary);">
-                                        <?php echo htmlspecialchars($tx_hash); ?>
+                                        <?php echo htmlspecialchars($txHash); ?>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -288,13 +259,12 @@ if ($search_query !== '') {
             const result = await purchaseProductOnBlockchain(productIdBytes32, price);
             
             if (result && result.success) {
-                // Save to PHP
+                // Save to PHP (this will also redirect)
                 await savePurchaseToPHP(productId, quantity, result.transactionHash);
                 
                 alert('Product purchased on blockchain!\n\nTransaction: ' + result.transactionHash + '\n\nView on Etherscan: https://sepolia.etherscan.io/tx/' + result.transactionHash);
                 
-                // Reload page
-                window.location.reload();
+                // Note: savePurchaseToPHP now handles the redirect
             } else {
                 alert('Error: Failed to purchase product');
                 button.disabled = false;
@@ -327,12 +297,17 @@ if ($search_query !== '') {
             formData.append('quantity', quantity);
             formData.append('tx_hash', txHash);
             
-            await fetch(window.location.href, {
+            const response = await fetch(window.location.pathname, {
                 method: 'POST',
                 body: formData
             });
+            
+            // Use replace to prevent form resubmission on refresh
+            window.location.replace(window.location.pathname);
+            return true;
         } catch (error) {
             console.error('Error saving purchase:', error);
+            return false;
         }
     }
 </script>

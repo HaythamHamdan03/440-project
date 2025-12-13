@@ -1,0 +1,53 @@
+{
+    "products": [
+        {
+            "id": "prod_693d641a927534.35808249",
+            "productId": "1234",
+            "name": "Apples",
+            "description": "Apples",
+            "batchId": "BATCH-1234",
+            "creator": "producer1",
+            "price": "0.5",
+            "quantity": "15",
+            "status": "approved",
+            "owner": "",
+            "txHash": "0x321a40622b7ed1f35f7fa98c9041026c5a0d9203d88c047af2ba1fd027db620b",
+            "blockchainProductId": "0x520fea7a30b15fa7b99fd11586d40f269f6f5c9958533fd0e3dd2a077acd6337",
+            "createdAt": "2025-12-13T13:03:22+00:00",
+            "updatedAt": "2025-12-13T13:06:06+00:00"
+        },
+        {
+            "id": "prod_693d6517d6f192.30437082",
+            "productId": "1234",
+            "name": "Apples",
+            "description": "Apples",
+            "batchId": "BATCH-1234",
+            "creator": "producer1",
+            "price": "0.5",
+            "quantity": "3",
+            "status": "shipped",
+            "owner": "supplier1",
+            "txHash": "0xd94a206b214f6968c2538efa4c9da8878c56de9cd9d82a20914e12dfb89eba3d",
+            "blockchainProductId": "0x520fea7a30b15fa7b99fd11586d40f269f6f5c9958533fd0e3dd2a077acd6337",
+            "createdAt": "2025-12-13T13:03:22+00:00",
+            "updatedAt": "2025-12-13T13:07:35+00:00"
+        },
+        {
+            "id": "prod_693d6553a1bee6.13677981",
+            "productId": "1234",
+            "name": "Apples",
+            "description": "Apples",
+            "batchId": "BATCH-1234",
+            "creator": "producer1",
+            "price": "0.5",
+            "quantity": "2",
+            "status": "purchased",
+            "owner": "consumer1",
+            "txHash": "0x215b2505d0c67c38916bb3c5caa4dc911216b0bf55f7c818b2e3dfd6852b295f",
+            "blockchainProductId": "0x520fea7a30b15fa7b99fd11586d40f269f6f5c9958533fd0e3dd2a077acd6337",
+            "createdAt": "2025-12-13T13:03:22+00:00",
+            "updatedAt": "2025-12-13T13:08:35+00:00"
+        }
+    ],
+    "lastUpdated": "2025-12-13T13:08:35+00:00"
+}

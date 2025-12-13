@@ -7,7 +7,6 @@
  */
 
 require_once 'config.php';
-require_once 'api_client.php';
 require_login();
 require_role(['consumer', 'admin']);
 
@@ -23,40 +22,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'purchase_product') {
         $productId = trim($_POST['productId'] ?? '');
         $quantity = intval($_POST['quantity'] ?? 0);
-        $tx_hash = trim($_POST['tx_hash'] ?? '');
+        $txHash = trim($_POST['tx_hash'] ?? '');
         
         if ($productId !== '' && $quantity > 0) {
-            // Update local storage with transaction hash if provided
-            if (purchase_product_consumer($productId, $username, $quantity)) {
-                if ($tx_hash) {
-                    // Update with transaction hash
-                    $products = load_products();
-                    foreach ($products as &$p) {
-                        if ($p['productId'] === $productId && $p['owner'] === $username) {
-                            $p['tx_hash'] = $tx_hash;
-                            break;
-                        }
-                    }
-                    // Save updated products
-                    $file = 'products.txt';
-                    $lines = [];
-                    foreach ($products as $p) {
-                        $lines[] = implode('|', [
-                            $p['productId'],
-                            $p['name'],
-                            $p['batchId'],
-                            $p['creator'],
-                            $p['price'],
-                            $p['quantity'],
-                            $p['status'],
-                            $p['updated_at'],
-                            isset($p['owner']) ? $p['owner'] : '',
-                            isset($p['tx_hash']) ? $p['tx_hash'] : '',
-                        ]);
-                    }
-                    file_put_contents($file, implode("\n", $lines) . "\n", LOCK_EX);
-                }
-                $status_message = '<div class="message-success" style="display: block; margin: 15px 0;">Product Shipped.</div>';
+            // Update local storage with transaction hash
+            if (purchase_product_consumer($productId, $username, $quantity, $txHash)) {
+                $status_message = '<div class="message-success" style="display: block; margin: 15px 0;">Product Purchased Successfully!</div>';
             } else {
                 $status_message = '<div class="message-error" style="display: block; margin: 15px 0;">Failed to purchase product. Please try again.</div>';
             }
@@ -97,30 +68,21 @@ if ($search_query !== '') {
     $search_lower = strtolower($search_query);
     $my_products = array_filter($my_products, function($p) use ($search_lower) {
         return strpos(strtolower($p['productId']), $search_lower) !== false ||
-               strpos(strtolower($p['tx_hash']), $search_lower) !== false ||
+               (isset($p['txHash']) && strpos(strtolower($p['txHash']), $search_lower) !== false) ||
                strpos(strtolower($p['name']), $search_lower) !== false;
     });
 }
 
-// Generate transaction links (for display - can be multiple transactions per product)
+// Generate transaction links (for display)
 function get_transaction_links($product) {
-    $tx_hash = isset($product['tx_hash']) ? trim($product['tx_hash']) : '';
-    if (empty($tx_hash) || $tx_hash === 'Pending') {
-        return ['<a href="#" style="color: #667eea; text-decoration: underline; cursor: pointer;">Transaction 1</a>'];
+    $txHash = isset($product['txHash']) ? trim($product['txHash']) : '';
+    if (empty($txHash) || $txHash === 'Pending') {
+        return ['<span style="color: #666;">Pending</span>'];
     }
     
-    // For now, show the transaction hash as clickable links
-    // In a real system, you might have multiple transactions stored separately
     $links = [];
     $link_style = 'color: #667eea; text-decoration: underline; cursor: pointer; display: block; margin-bottom: 4px;';
-    $links[] = '<a href="#" onclick="viewTransaction(\'' . htmlspecialchars($tx_hash) . '\'); return false;" style="' . $link_style . '">Transaction 1</a>';
-    
-    // Generate additional transaction links if needed (for demo purposes)
-    // In real implementation, these would come from a transaction history
-    if (strlen($tx_hash) > 10) {
-        $links[] = '<a href="#" onclick="viewTransaction(\'' . htmlspecialchars($tx_hash) . '\'); return false;" style="' . $link_style . '">Transaction 2</a>';
-        $links[] = '<a href="#" onclick="viewTransaction(\'' . htmlspecialchars($tx_hash) . '\'); return false;" style="color: #667eea; text-decoration: underline; cursor: pointer; display: block;">Transaction 3</a>';
-    }
+    $links[] = '<a href="#" onclick="viewTransaction(\'' . htmlspecialchars($txHash) . '\'); return false;" style="' . $link_style . '">View Tx</a>';
     
     return $links;
 }
@@ -208,7 +170,7 @@ function get_transaction_links($product) {
                                             />
                                             <button 
                                                 type="button"
-                                                onclick="purchaseProductAsConsumer('<?php echo htmlspecialchars($product['productId']); ?>', '<?php echo htmlspecialchars($product['name']); ?>', '<?php echo $price; ?>', '<?php echo htmlspecialchars($product['tx_hash']); ?>')"
+                                                onclick="purchaseProductAsConsumer('<?php echo htmlspecialchars($product['productId']); ?>', '<?php echo htmlspecialchars($product['name']); ?>', '<?php echo $price; ?>', '<?php echo htmlspecialchars($product['blockchainProductId'] ?? $product['txHash'] ?? ''); ?>')"
                                                 class="btn btn-primary"
                                                 style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; padding: 6px 16px; font-size: 0.9em;"
                                             >
@@ -273,7 +235,7 @@ function get_transaction_links($product) {
                                 $price = isset($product['price']) ? number_format(floatval($product['price']), 2) : '0.00';
                                 $qty = isset($product['quantity']) ? intval($product['quantity']) : 0;
                                 $status = isset($product['status']) ? $product['status'] : 'pending';
-                                $updated = isset($product['updated_at']) ? $product['updated_at'] : 'N/A';
+                                $updated = isset($product['updatedAt']) ? $product['updatedAt'] : 'N/A';
                                 $transaction_links = get_transaction_links($product);
                             ?>
                                 <tr>

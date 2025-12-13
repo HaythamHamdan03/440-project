@@ -1,6 +1,6 @@
 <?php
 /**
- * Save transaction hash to product
+ * Save transaction hash to product (JSON-based storage)
  */
 
 session_start();
@@ -15,23 +15,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $txHash = $input['transactionHash'] ?? '';
     $blockchainProductId = $input['blockchainProductId'] ?? '';
     
+    // Debug logging
+    error_log("save_transaction.php - productId: $productId, txHash: $txHash, blockchainProductId: $blockchainProductId");
+    
     if (empty($productId) || empty($txHash)) {
-        echo json_encode(['success' => false, 'error' => 'Missing required fields']);
+        echo json_encode(['success' => false, 'error' => 'Missing required fields', 'debug' => ['productId' => $productId, 'txHash' => $txHash]]);
         exit;
     }
     
     $current_user = get_logged_in_user();
+    error_log("save_transaction.php - user: " . $current_user['username']);
     
-    // Update product with transaction hash
-    update_product($productId, $current_user['username'], [
+    // Update product with transaction hash and blockchain product ID
+    $result = update_product($productId, $current_user['username'], [
         'status' => 'approved',
-        'updated_at' => date('Y-m-d\TH:i:s'),
-        'tx_hash' => $txHash
+        'txHash' => $txHash,
+        'blockchainProductId' => $blockchainProductId
     ]);
     
-    echo json_encode(['success' => true]);
+    error_log("save_transaction.php - update_product result: " . ($result ? 'true' : 'false'));
+    
+    if ($result) {
+        echo json_encode(['success' => true, 'productId' => $productId, 'status' => 'approved']);
+    } else {
+        echo json_encode(['success' => false, 'error' => 'Failed to update product - product not found or permission denied', 'productId' => $productId, 'user' => $current_user['username']]);
+    }
 } else {
     echo json_encode(['success' => false, 'error' => 'Invalid request method']);
 }
-
-?>

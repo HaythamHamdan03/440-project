@@ -73,8 +73,9 @@ async function checkWalletConnection() {
 
 /**
  * Connect to MetaMask wallet (user-initiated only)
+ * @param {boolean} forceAccountSelection - If true, force MetaMask to show account selection
  */
-async function connectWallet() {
+async function connectWallet(forceAccountSelection = false) {
     if (typeof window.ethereum === 'undefined') {
         alert('MetaMask is not installed. Please install MetaMask to continue.');
         window.open('https://metamask.io/', '_blank');
@@ -82,8 +83,18 @@ async function connectWallet() {
     }
     
     try {
+        let accounts;
+        
+        // If forcing account selection, request permissions to show account picker
+        if (forceAccountSelection) {
+            await window.ethereum.request({
+                method: 'wallet_requestPermissions',
+                params: [{ eth_accounts: {} }]
+            });
+        }
+        
         // Request account access
-        const accounts = await window.ethereum.request({
+        accounts = await window.ethereum.request({
             method: 'eth_requestAccounts'
         });
         
@@ -133,10 +144,22 @@ async function handleAccountsChanged(accounts) {
         currentAccount = null;
         isConnected = false;
         updateWalletStatus('Not connected', false);
-    } else {
+        updateWalletButton();
+    } else if (accounts[0] !== currentAccount) {
+        // Account changed - update everything
         currentAccount = accounts[0];
+        isConnected = true;
         updateWalletStatus(currentAccount, true);
         await storeWalletAddress(currentAccount);
+        updateWalletButton();
+        
+        // Re-initialize blockchain with new account
+        if (typeof initBlockchain === 'function') {
+            await initBlockchain();
+        }
+        
+        // Notify user of account change
+        console.log('MetaMask account changed to:', currentAccount);
     }
 }
 
@@ -290,6 +313,7 @@ async function disconnectWallet() {
  */
 function updateWalletButton() {
     const connectBtn = document.getElementById('connect-wallet-btn');
+    const switchBtn = document.getElementById('switch-wallet-btn');
     const disconnectBtn = document.getElementById('disconnect-wallet-btn');
     
     if (!connectBtn || !disconnectBtn) {
@@ -298,13 +322,15 @@ function updateWalletButton() {
         return;
     }
     
-    // Show Connect by default, Disconnect only when actually connected
+    // Show Connect by default, Switch + Disconnect only when actually connected
     if (isConnected && currentAccount) {
         connectBtn.style.display = 'none';
+        if (switchBtn) switchBtn.style.display = 'inline-block';
         disconnectBtn.style.display = 'inline-block';
     } else {
-        // Default state: show Connect, hide Disconnect
+        // Default state: show Connect, hide Switch and Disconnect
         connectBtn.style.display = 'inline-block';
+        if (switchBtn) switchBtn.style.display = 'none';
         disconnectBtn.style.display = 'none';
         // Reset connection state if not connected
         isConnected = false;

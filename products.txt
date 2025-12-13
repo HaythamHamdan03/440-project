@@ -2,3 +2,5 @@
 1002|ali|BATCH-1002|producer1|33|3|shipped|2025-12-11T00:08:52|supplier1|0xf7da3ca71e685800fd95b4ba1d32c520
 1003|banan|BATCH-1003|ismael|2.5|12|saved|2025-12-11T00:40:11||
 1005|bread|BATCH-1005|ismael|0|1|saved|2025-12-11T03:07:25||
+12345|Applesssssss|BATCH-12345|producer1|0.50|19|approved|2025-12-13T12:21:00||0xeb2d9bc594f0304f66cd1b5edf05213c4d80d2140b1bbbee88a79a05a8260045
+12345|Applesssssss|BATCH-12345|producer1|0.50|19|approved|2025-12-13T12:21:00||0xeb2d9bc594f0304f66cd1b5edf05213c4d80d2140b1bbbee88a79a05a8260045

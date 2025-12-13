@@ -31,12 +31,12 @@
  */
 
 // Replace this with your deployed contract address on Sepolia
-const CONTRACT_ADDRESS = "0xYOUR_CONTRACT_ADDRESS_HERE_ON_SEPOLIA";
+const CONTRACT_ADDssRESS = "0xYOUR_CONTRACT_ADDRESS_HERE_ON_SEPOLIA";
 
 // Replace this with your contract's ABI (Application Binary Interface)
 // This is a MINIMAL example ABI that matches the required functions
 // You should replace it with the full ABI from your compiled contract
-const CONTRACT_ABI = [
+const CONTRACT_Anb = [
     // Function: registerProduct(uint256 productId, string memory name, string memory description, string memory batchId)
     {
         "inputs": [

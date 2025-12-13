@@ -1,174 +1,93 @@
-# ChainTrack - Blockchain Supply Chain Tracking System
-
-A modern React + TypeScript frontend for blockchain-based supply chain tracking, built for ICS 440 - Cryptography and Blockchain Applications.
-
-## 🎨 Design Theme
-
-- **Dark industrial theme** with deep navy/slate backgrounds
-- **Cyan/teal accent colors** (primary: hsl(186, 100%, 50%))
-- **Typography**: Space Grotesk for headings, JetBrains Mono for code/addresses
-- **Glow effects** on buttons and cards
-- **Glass morphism** effects with backdrop blur
-
-## 🛠️ Tech Stack
-
-- **React 18** with TypeScript
-- **Vite** as bundler
-- **Tailwind CSS** for styling
-- **Shadcn/ui** components (Button, Card, Input, Label, Badge, Tabs)
-- **Lucide React** for icons
-- **Sonner** for toast notifications
-
-## ✨ Features
-
-### 1. Wallet Connection Component
-- MetaMask wallet connection button
-- Display connected wallet address (truncated), network name, and ETH balance
-- Connection status indicator with animations
-- Disconnect functionality
-
-### 2. Role Selector Component
-- Three roles: Producer, Supplier, Consumer
-- Each role has an icon, title, description, and list of capabilities
-- Visual selection with glow effect on selected role
-
-### 3. Product Registration Form (Producer only)
-- Fields: Product ID, Product Name, Description, Manufacturer, Manufacturing Date
-- Form validation
-- Success toast on registration
-- Mock blockchain transaction simulation
-
-### 4. Product Transfer Component (Supplier/Consumer)
-- Search for product by ID
-- Display product details when found
-- Recipient address input
-- Transfer confirmation with toast
-
-### 5. Product History Component
-- Search products by ID
-- Display timeline of all transfers
-- Show: event type, from/to addresses, timestamps, transaction hashes
-- Visual timeline with status badges
-
-### 6. Dashboard Stats
-- Stats cards showing: Total Products, Active Transfers, Verified Products, Network Status
-- Animated counters and status indicators
-
-### 7. Recent Activity Feed
-- List of recent blockchain events
-- Show event type, description, time ago, transaction hash
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Node.js 18+ and npm/yarn/pnpm
-- MetaMask browser extension (for wallet connection)
-
-### Installation
-
-1. Clone the repository or extract the project files
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Start the development server:
-```bash
-npm run dev
-```
-
-4. Open your browser and navigate to `http://localhost:5173`
-
-### Build for Production
-
-```bash
-npm run build
-```
-
-The production build will be in the `dist` folder.
-
-## 📁 Project Structure
-
-```
-chaintrack/
-├── src/
-│   ├── components/
-│   │   ├── ui/          # Reusable UI components
-│   │   ├── WalletConnect.tsx
-│   │   ├── RoleSelector.tsx
-│   │   ├── ProductRegistration.tsx
-│   │   ├── ProductTransfer.tsx
-│   │   ├── ProductHistory.tsx
-│   │   ├── DashboardStats.tsx
-│   │   └── RecentActivity.tsx
-│   ├── hooks/
-│   │   └── useWallet.ts
-│   ├── lib/
-│   │   ├── utils.ts
-│   │   └── mockData.ts
-│   ├── types/
-│   │   └── supply-chain.ts
-│   ├── App.tsx
-│   ├── main.tsx
-│   └── index.css
-├── index.html
-├── package.json
-├── vite.config.ts
-├── tsconfig.json
-└── tailwind.config.js
-```
-
-## 🎯 Usage
-
-1. **Connect Wallet**: Click "Connect Wallet" button in the header to connect MetaMask
-2. **Select Role**: Choose your role (Producer, Supplier, or Consumer)
-3. **Navigate Tabs**: Use the tabs to access different features:
-   - **Dashboard**: View statistics and recent activity
-   - **Register** (Producer): Register new products
-   - **Transfer** (Supplier/Consumer): Transfer products
-   - **History**: View product history and traceability
-
-## 🔌 Smart Contract Integration
-
-The frontend is designed to be easily connected to a Solidity smart contract. To integrate:
-
-1. Update `src/hooks/useWallet.ts` to use your contract ABI and address
-2. Replace mock data in `src/lib/mockData.ts` with actual contract calls
-3. Update component functions to call contract methods instead of mock simulations
-
-## 🎨 Customization
-
-### Color Variables
-
-Edit `src/index.css` to customize colors:
-
-```css
-:root {
-  --background: 222 47% 6%;
-  --foreground: 210 40% 98%;
-  --primary: 186 100% 50%;
-  --secondary: 217 33% 17%;
-  --accent: 199 89% 48%;
-  --muted: 217 33% 17%;
-  --card: 222 47% 8%;
-  --border: 217 33% 20%;
-}
-```
-
-## 📝 Notes
-
-- All data is currently **mock/simulated** - no actual blockchain integration
-- The UI is ready to connect to a Solidity smart contract
-- MetaMask connection is functional but uses mock data for transactions
-- For production use, integrate with your deployed smart contract
-
-## 📄 License
-
-This project is created for educational purposes as part of ICS 440 course requirements.
-
-## 👥 Authors
-
-ICS 440 - Cryptography and Blockchain Applications | Term 251
-
+Project Guidelines: Supply Chain Transparency
+Tracking via Blockchain
+ICS 440 - Cryptography and Blockchain Applications
+Term 251
+1. Project Overview
+In modern supply chains, lack of transparency leads to fraud, counterfeiting, and loss of trust
+between producers, intermediaries (e.g., distributors, suppliers, retailers), and consumers. This
+project aims to develop a blockchain-based supply chain tracking system that records ev-
+ery transaction—from production/manufacturing to customer—on an immutable ledger (i.e.
+blockchain) using smart contracts. Each participant (producer, supplier, consumer) interacts
+with the blockchain to update the product’s status securely and verifiably.
+2. Learning Objectives
+• Understand the role of blockchain in ensuring data integrity and transparency.
+• Implement and deploy smart contracts in Solidity.
+• Apply cryptographic techniques and timestamping for authenticity.
+• Demonstrate how decentralization enhances trust in supply chain systems.
+• Optionally integrate QR-code-based identification for product tracking.
+• Optionally integrate balance transfer related to any purchase.
+3. System Description
+The system should model a simplified supply chain with the following entities:
+• Producer: Registers the product on blockchain.
+• Supplier: Confirms product purchase and stores product data.
+• Consumer: Confirms product purchase, verifies product authenticity (using product ID or
+optionally with QR code).
+4. Technical Requirements
+The following tools and components should be used for implementation:
+a) Blockchain Platform
+Use Ethereum with tools such as Remix IDE. Sepolia Test Network can be used for blockchain
+simulation and MetaMask for wallet integration.
+1
+b) Smart Contract
+Written in Solidity and must support functions such as:
+• registerProduct(productID, ..) – to be used by producer
+• transferProduct(productID, ..) – to be used by supplier/consumer
+• getProductHistory(productID, ..) – to be used by consumer
+• (optional) transferBalance(senderID, receiverID) – to be used by all
+• (optional) verifyProduct(QR-code) – to be used by all
+c) Frontend
+A simple web interface (HTML/JS/PHP) can be developed to interact with the smart contract.
+It should allow users to view product details and transaction history, possibly with product ID
+or optiopnally, with QR code integration.
+e) Cryptographic Components
+Use required hashing to generate product or transaction identifiers. Store only hashes (not raw
+data) on-chain for efficiency and privacy.
+5. Expected Deliverables
+• Project Report (4–6 pages) detailing problem background, system architecture, smart
+contract design, testing scenarios, example transactions, and discussion on security.
+• Source Code including smart contracts, frontend codes, setup instructions.
+• Demo using Sepolia (or other test network) showing product registration, product transfer,
+verification, etc.
+6. Grading Rubric (Total 100 Marks)
+Component Description Marks
+Smart Contract and Web
+Implementation
+Code correctness, functionality, events, and Web in-
+tegration
+30
+Testing & Demonstration Working demo, clarity of transactions, bug-free op-
+eration
+30
+Report Quality Technical explanation, screenshots, clarity of sys-
+tem design, correct modeling and critical security
+analysis
+40
+Innovation/Extension Optional Activities: i) QR code use (or IoT integra-
+tion) - Bonus 10 marks; ii) Balance transfer (or any
+creative features) - Bonus 10 marks
+20
+Total (without bonus) 100
+2
+7. Optional Extensions (Bonus Marks)
+• Build QR scanner (or IoT integration) for tracking products.
+• Add user-based access control to smart contracts and balance transfer (or any creative fea-
+tures).
+8. Suggested Deadlines
+Date Tasks
+December 10, 2025 Final report submission
+December 11, 2025 Demo Presentation and evaluation
+Submission Format
+• Report: PDF named ICS440_KFUP#IDs_ProjectReport.pdf
+– Submit via Gradescope by the announced deadline.
+– One submission for each group (including the information of all members).
+• Demo: Live Demonstration of the developed tool(s)
+Additional Notes
+• Students must work in a group (maximum 3 members).
+• Attendance (of all members in a group) during demo is mandatory.
+Useful Links
+• Simple Demo (without voice): https://www.youtube.com/watch?v=386UAhGqEFQ
+• Remix IDE: https://remix.ethereum.org/
+• MetaMask Wallet (Browser Extension): https://metamask.io/download
+• Sepolia Testnet Explorer: https://sepolia.etherscan.io/
+• Implementation-related Book: https://link.springer.com/book/10.1007/978-1-4842-5086-0
+3
